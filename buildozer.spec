@@ -9,7 +9,9 @@ source.include_exts = py,txt,md,yml,json,png
 version = 1.0.0
 
 # Kivy + Pillow（Pillow 只用来把余额文字画成贴图）
-requirements = python3,kivy,pillow
+# charset-normalizer 3.x 的 C 扩展 wheel 在 p4a 交叉编译下会被 pip 26 拒绝，
+# 固定到纯 Python 的 2.1.1
+requirements = python3,kivy,pillow,charset-normalizer==2.1.1
 
 orientation = portrait
 fullscreen = 0
