@@ -133,20 +133,49 @@ class SpriteSheet:
 # --------------------------------------------------------------------------
 
 
-def read_api_key():
+def _app_key_path():
+    try:
+        from kivy.app import App
+        app = App.get_running_app()
+        base = app.user_data_dir if app else HERE
+    except Exception:
+        base = HERE
+    return os.path.join(base, "deepseek_key.txt")
+
+
+def read_api_key(explicit=""):
+    """按优先级取 key：参数 -> 环境变量 -> 文件 -> 剪贴板。
+
+    安卓上写不了环境变量，也没有方便落盘的位置，所以允许从剪贴板
+    「领取」一次（复制 sk- 开头的 key 后打开 App 或点价签即可）。
+    """
+    key = (explicit or "").strip()
+    if key:
+        return key
     key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if key:
         return key
-    for name in ("deepseek_key.txt", ".deepseek_key"):
-        path = os.path.join(HERE, name)
-        if os.path.isfile(path):
-            try:
+    for path in (_app_key_path(), os.path.join(HERE, "deepseek_key.txt")):
+        try:
+            if os.path.isfile(path):
                 with open(path, encoding="utf-8") as fh:
-                    key = fh.read().strip()
-                if key:
-                    return key
+                    found = fh.read().strip()
+                if found:
+                    return found
+        except OSError:
+            pass
+    try:
+        from kivy.core.clipboard import Clipboard
+        txt = (Clipboard.paste() or "").strip()
+        if txt.startswith("sk-") and len(txt) > 20:
+            try:
+                with open(_app_key_path(), "w", encoding="utf-8") as fh:
+                    fh.write(txt)
             except OSError:
                 pass
+            return txt
+    except Exception:
+        pass
     return ""
 
 
@@ -289,9 +318,13 @@ class OverlayBridge:
             for i in range(view.getChildCount()):
                 OverlayBridge._find_surface_views(view.getChildAt(i), out, depth + 1)
 
+    _pet_w = 260
+    _pet_h = 260
+
     def enable(self, width_px, height_px, x_px=0, y_px=0):
+        """切换成悬浮窗，返回 (是否成功, 原因)。"""
         if not self._is_android():
-            return False
+            return False, "not android"
         try:
             from jnius import autoclass
 
@@ -304,21 +337,26 @@ class OverlayBridge:
 
             activity = PythonActivity.mActivity
             if activity is None:
-                return False
+                return False, "no activity"
 
             if Build.VERSION.SDK_INT >= 23 and not Settings.canDrawOverlays(activity):
-                Intent = autoclass("android.content.Intent")
-                Uri = autoclass("android.net.Uri")
-                intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:" + activity.getPackageName()))
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                activity.startActivity(intent)
-                return False
+                try:
+                    Intent = autoclass("android.content.Intent")
+                    Uri = autoclass("android.net.Uri")
+                    intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:" + activity.getPackageName()))
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    activity.startActivity(intent)
+                except Exception:
+                    pass
+                return False, "no overlay permission"
 
             window = activity.getWindow()
             lp = window.getAttributes()
             lp.type = 2038 if Build.VERSION.SDK_INT >= 26 else 2002
-            lp.flags = 8 | 16 | 32 | 512
+            # NOT_FOCUSABLE(8) | NOT_TOUCH_MODAL(32) | LAYOUT_NO_LIMITS(512)
+            # 千万别加 FLAG_NOT_TOUCHABLE(16)，那会让整个窗口收不到触摸
+            lp.flags = 8 | 32 | 512
             lp.width = int(width_px)
             lp.height = int(height_px)
             lp.gravity = Gravity.TOP | Gravity.LEFT
@@ -326,6 +364,7 @@ class OverlayBridge:
             lp.y = int(y_px)
             window.setAttributes(lp)
 
+            # SurfaceView 设成半透明并置顶，画面才能浮在桌面上
             views = []
             try:
                 OverlayBridge._find_surface_views(window.getDecorView(), views)
@@ -339,10 +378,31 @@ class OverlayBridge:
             self.wm = activity.getSystemService(Context.WINDOW_SERVICE)
             self.lp = lp
             self.window = window
-            return True
-        except Exception:
+            self._pet_w = int(width_px)
+            self._pet_h = int(height_px)
+            return True, "ok"
+        except Exception as exc:
             self.active = False
-            return False
+            return False, repr(exc)
+
+    def set_panel_mode(self, on):
+        """聊天面板需要输入框能获得焦点，所以临时放大窗口。"""
+        if not self.active:
+            return
+        try:
+            if on:
+                self.lp.width = -1    # MATCH_PARENT
+                self.lp.height = -1
+                self.lp.flags = self.lp.flags & ~8
+                self.lp.softInputMode = 0x10   # ADJUST_RESIZE
+            else:
+                self.lp.width = self._pet_w
+                self.lp.height = self._pet_h
+                self.lp.flags = self.lp.flags | 8
+                self.lp.softInputMode = 0
+            self.window.setAttributes(self.lp)
+        except Exception:
+            pass
 
     def move_to(self, x_px, y_px):
         if not self.active:
@@ -387,7 +447,8 @@ class WhalePet(Widget):
     def __init__(self, bridge: OverlayBridge | None = None, api_key: str = "", **kwargs):
         super().__init__(**kwargs)
         self.bridge = bridge or OverlayBridge()
-        self.api_key = (api_key or "").strip()
+        self.api_key = read_api_key(api_key)
+        self._key_hint = False
 
         # 位置与速度
         self.px = Window.width * 0.5
@@ -434,6 +495,10 @@ class WhalePet(Widget):
         self.balance_value = None
         self._fetching = False
         self._balance_timer = 0.6
+
+        # 聊天面板（懒创建）
+        self.chat_panel = None
+        self._chat_open = False
 
         self._build_canvas()
         self._tick_ev = Clock.schedule_interval(self._tick, 1.0 / 60.0)
@@ -676,6 +741,8 @@ class WhalePet(Widget):
         return (dx * dx + dy * dy) <= r * r
 
     def on_touch_down(self, touch):
+        if self._chat_open:
+            return super().on_touch_down(touch)
         if not self.collide_point(*touch.pos):
             return False
 
@@ -705,6 +772,8 @@ class WhalePet(Widget):
         return True
 
     def on_touch_move(self, touch):
+        if self._chat_open:
+            return super().on_touch_move(touch)
         if touch.grab_current is not self:
             return False
         if touch.uid not in self.touches:
@@ -718,6 +787,8 @@ class WhalePet(Widget):
         return True
 
     def on_touch_up(self, touch):
+        if self._chat_open:
+            return super().on_touch_up(touch)
         if touch.grab_current is not self:
             return False
         touch.ungrab(self)
@@ -737,13 +808,12 @@ class WhalePet(Widget):
             self.squash_v += 1.4
             self.bridge.vibrate(16)
             if self.t - self.last_tap < 0.34:
-                self.happy_until = self.t + 2.6
-                self.vy += 900.0
-                self._spawn_bubble(4)
-                self.bridge.vibrate(30)
+                # 双击 -> 打开聊天
+                self.last_tap = -9.0
+                self._open_chat()
             else:
                 self.happy_until = self.t + 2.2
-            self.last_tap = self.t
+                self.last_tap = self.t
         else:
             self.vx = _clamp(dx / dt * 1.8, -1500, 1500)
             self.vy = _clamp(dy / dt * 1.8, -1500, 1500)
@@ -753,12 +823,19 @@ class WhalePet(Widget):
     def on_size(self, *args):
         self.px = _clamp(self.px, 0, self.width)
         self.py = _clamp(self.py, 0, self.height)
+        if self.chat_panel is not None:
+            self.chat_panel.size = (self.width, self.height)
+            self.chat_panel.pos = (0, 0)
 
     # ------------------------------------------------------------------
     # 余额
     # ------------------------------------------------------------------
     def _step_balance(self, dt):
         if not self.api_key:
+            if not self._key_hint:
+                self._key_hint = True
+                self.balance_tag.set_value("key?", "muted")
+                self.balance_tag.opacity = 1.0
             return
         self._balance_timer -= dt
         if self._balance_timer <= 0.0:
@@ -766,7 +843,14 @@ class WhalePet(Widget):
             self.refresh_balance()
 
     def refresh_balance(self):
-        if not self.api_key or self._fetching:
+        if not self.api_key:
+            # 再试一次：用户可能刚把 key 复制到剪贴板
+            self.api_key = read_api_key("")
+            if not self.api_key:
+                self.balance_tag.set_value("key?", "muted")
+                self.balance_tag.opacity = 1.0
+                return
+        if self._fetching:
             return
         self._fetching = True
         self.balance_tag.set_value("···", "muted")
@@ -797,6 +881,32 @@ class WhalePet(Widget):
         self.balance_tag.set_value("\u00a5%.2f" % value, tone)
         self.balance_tag.opacity = 1.0
 
+    # ------------------------------------------------------------------
+    # 聊天
+    # ------------------------------------------------------------------
+    def _open_chat(self):
+        if self._chat_open:
+            return
+        if self.chat_panel is None:
+            from chat import ChatPanel
+            self.chat_panel = ChatPanel(api_key=self.api_key, on_close=self._close_chat)
+            self.add_widget(self.chat_panel)
+        self.chat_panel.size = (self.width, self.height)
+        self.chat_panel.pos = (0, 0)
+        self.chat_panel.opacity = 1
+        self.chat_panel.disabled = False
+        self._chat_open = True
+        self.bridge.set_panel_mode(True)
+
+    def _close_chat(self):
+        if not self._chat_open:
+            return
+        self._chat_open = False
+        if self.chat_panel is not None:
+            self.chat_panel.opacity = 0
+            self.chat_panel.disabled = True
+        self.bridge.set_panel_mode(False)
+
     def _balance_err(self, msg):
         self._fetching = False
         self.balance_tag.set_value("\u2014", "muted")
@@ -818,11 +928,11 @@ def _dp_to_px(dp):
 
 
 def _parse_key():
-    key = read_api_key()
+    explicit = ""
     for a in sys.argv[1:]:
         if a.startswith("--key="):
-            key = a.split("=", 1)[1].strip()
-    return key
+            explicit = a.split("=", 1)[1].strip()
+    return read_api_key(explicit)
 
 
 def _platform():
@@ -843,9 +953,13 @@ def main():
 
     is_android = _platform() == "android"
     if is_android:
-        Window.fullscreen = False
-        Window.size = (px, px)
-        Window.position = (40, 200)
+        # 安卓上 Window.position 只接受 'auto'/'custom'，不能赋坐标；
+        # 悬浮窗的实际位置由 OverlayBridge 的 LayoutParams 决定。
+        for attr, value in (("fullscreen", False), ("size", (px, px))):
+            try:
+                setattr(Window, attr, value)
+            except Exception:
+                pass
     else:
         Window.size = (px, px)
 
@@ -862,8 +976,17 @@ def main():
             return root
 
         def on_start(self):
-            if is_android:
-                bridge.enable(px, px, 60, 300)
+            self._ensure_overlay()
+
+        def on_resume(self):
+            # 用户从「悬浮窗权限」设置页回来时重试
+            self._ensure_overlay()
+
+        def _ensure_overlay(self):
+            if not is_android or bridge.active:
+                return
+            ok, reason = bridge.enable(px, px, 60, 300)
+            print("[overlay]", ok, reason, flush=True)
 
     WhalePetApp().run()
 

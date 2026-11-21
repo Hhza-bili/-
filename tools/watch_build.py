@@ -9,22 +9,35 @@ API = f"https://api.github.com/repos/{OWNER}/{REPO}"
 OUT = "/sdcard/Download/DSH-Go"
 
 
-def api(path):
-    req = urllib.request.Request(API + path, headers={
-        "Authorization": "Bearer " + TOKEN, "User-Agent": "whale",
-        "Accept": "application/vnd.github+json"})
-    return json.loads(urllib.request.urlopen(req, timeout=40).read())
+def api(path, tries=5):
+    last = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(API + path, headers={
+                "Authorization": "Bearer " + TOKEN, "User-Agent": "whale",
+                "Accept": "application/vnd.github+json"})
+            return json.loads(urllib.request.urlopen(req, timeout=40).read())
+        except Exception as e:
+            last = e
+            time.sleep(4 + i * 4)
+    raise last
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
 
 
 def download(url):
+    """artifact 下载会 302 到对象存储，认证头不能带过去。"""
+    opener = urllib.request.build_opener(_NoRedirect)
     req = urllib.request.Request(url, headers={
         "Authorization": "Bearer " + TOKEN, "User-Agent": "whale"})
     try:
-        return urllib.request.urlopen(req, timeout=120).read()
+        return opener.open(req, timeout=90).read()
     except urllib.error.HTTPError as e:
         if e.code in (301, 302, 303, 307, 308):
-            loc = e.headers.get("Location")
-            return urllib.request.urlopen(loc, timeout=240).read()
+            return urllib.request.urlopen(e.headers["Location"], timeout=300).read()
         raise
 
 
@@ -32,9 +45,14 @@ def main():
     deadline = time.time() + 3600
     status = conclusion = None
     while time.time() < deadline:
-        r = api(f"/actions/runs/{RUN}")
-        status, conclusion = r["status"], r["conclusion"]
-        print(time.strftime("%H:%M:%S"), status, conclusion, flush=True)
+        try:
+            r = api(f"/actions/runs/{RUN}")
+            status, conclusion = r["status"], r["conclusion"]
+            print(time.strftime("%H:%M:%S"), status, conclusion, flush=True)
+        except Exception as e:
+            print(time.strftime("%H:%M:%S"), "poll error:", e, flush=True)
+            time.sleep(20)
+            continue
         if status == "completed":
             break
         time.sleep(45)

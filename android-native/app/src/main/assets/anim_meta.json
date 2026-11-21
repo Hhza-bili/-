@@ -1,0 +1,50 @@
+{
+  "idle": {
+    "file": "idle_sheet.png",
+    "cols": 8,
+    "rows": 15,
+    "count": 120,
+    "frame_w": 220,
+    "frame_h": 124,
+    "cell_w": 224,
+    "cell_h": 128,
+    "pad": 2,
+    "interval": 0.08
+  },
+  "happy": {
+    "file": "happy_sheet.png",
+    "cols": 8,
+    "rows": 15,
+    "count": 120,
+    "frame_w": 220,
+    "frame_h": 124,
+    "cell_w": 224,
+    "cell_h": 128,
+    "pad": 2,
+    "interval": 0.08
+  },
+  "drag": {
+    "file": "drag_sheet.png",
+    "cols": 8,
+    "rows": 15,
+    "count": 120,
+    "frame_w": 220,
+    "frame_h": 124,
+    "cell_w": 224,
+    "cell_h": 128,
+    "pad": 2,
+    "interval": 0.08
+  },
+  "squash": {
+    "file": "squash_sheet.png",
+    "cols": 8,
+    "rows": 15,
+    "count": 120,
+    "frame_w": 220,
+    "frame_h": 124,
+    "cell_w": 224,
+    "cell_h": 128,
+    "pad": 2,
+    "interval": 0.08
+  }
+}

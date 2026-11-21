@@ -26,13 +26,17 @@
 
 ## 配置 API Key
 
-任选一种：
+**手机上最简单**：把 key 复制到剪贴板，打开 App（或点一下头顶价签），会自动领取并保存。
+
+桌面端任选一种：
 
 ```bash
 export DEEPSEEK_API_KEY=sk-xxx      # 环境变量
 python3 whale_pet.py --key=sk-xxx   # 命令行
 echo sk-xxx > deepseek_key.txt      # 同目录文件
 ```
+
+没配 key 时价签显示灰色的 `key?`，不影响桌宠本身。
 
 ## 本地运行
 

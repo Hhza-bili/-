@@ -3,3 +3,7 @@ _frames/
 __pycache__/
 *.pyc
 pose_*.png
+android-native/.gradle/
+android-native/app/build/
+android-native/build/
+android-native/local.properties
