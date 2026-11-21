@@ -9,15 +9,21 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+/** 有 key 走 DeepSeek 官方；没 key 走无需密钥的公共免费接口。 */
 public class DeepSeek {
-    private static final String ENDPOINT = "https://api.deepseek.com/chat/completions";
+    private static final String OFFICIAL = "https://api.deepseek.com/chat/completions";
+    private static final String FREE = "https://text.pollinations.ai/openai";
     private static final String SYSTEM =
             "你是 DeepSeek 的鲸鱼娘：蓝色双马尾、白色女仆装、围裙上有小鲸鱼。"
           + "说话可爱、简短、有元气，自称「本鲸」，回答不超过 80 字，不要说教。";
 
     public static String chat(String key, JSONArray history) throws Exception {
+        String k = key == null ? "" : key.trim();
+        boolean free = k.isEmpty();
+        String endpoint = free ? FREE : OFFICIAL;
+
         JSONObject body = new JSONObject();
-        body.put("model", "deepseek-chat");
+        body.put("model", free ? "openai" : "deepseek-chat");
         JSONArray msgs = new JSONArray();
         JSONObject sys = new JSONObject();
         sys.put("role", "system");
@@ -28,10 +34,11 @@ public class DeepSeek {
         body.put("stream", false);
         body.put("max_tokens", 300);
 
-        HttpURLConnection c = (HttpURLConnection) new URL(ENDPOINT).openConnection();
+        HttpURLConnection c = (HttpURLConnection) new URL(endpoint).openConnection();
         c.setRequestMethod("POST");
-        c.setRequestProperty("Authorization", "Bearer " + key);
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        c.setRequestProperty("Accept", "application/json");
+        if (!free) c.setRequestProperty("Authorization", "Bearer " + k);
         c.setConnectTimeout(15000);
         c.setReadTimeout(60000);
         c.setDoOutput(true);
@@ -42,9 +49,16 @@ public class DeepSeek {
         InputStream in = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream();
         String text = drain(in);
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code + " " + text);
-        JSONObject resp = new JSONObject(text);
-        return resp.getJSONArray("choices").getJSONObject(0)
-                .getJSONObject("message").getString("content").trim();
+        try {
+            JSONObject resp = new JSONObject(text);
+            return resp.getJSONArray("choices").getJSONObject(0)
+                    .getJSONObject("message").getString("content").trim();
+        } catch (Exception e) {
+            // 免费接口偶尔直接回纯文本
+            String t = text.trim();
+            if (t.length() > 0 && !t.startsWith("{")) return t;
+            throw e;
+        }
     }
 
     private static String drain(InputStream in) throws Exception {
