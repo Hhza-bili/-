@@ -219,6 +219,27 @@ public class PetService extends Service {
         } catch (Exception ignored) {}
     }
 
+    boolean blurOn() {
+        return getSharedPreferences("pet", MODE_PRIVATE).getBoolean("blur", true);
+    }
+
+    boolean fadeOn() {
+        return getSharedPreferences("pet", MODE_PRIVATE).getBoolean("fade", true);
+    }
+
+    void cycleSkin() {
+        closePanel();
+        if (petView != null) petView.cycle();
+    }
+
+    void hidePet() {
+        if (root != null) {
+            try { wm.removeView(root); } catch (Exception ignored) {}
+            root = null;
+        }
+        stopSelf();
+    }
+
     String getKey() {
         return getSharedPreferences("pet", MODE_PRIVATE).getString("key", "");
     }
