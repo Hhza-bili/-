@@ -82,7 +82,7 @@ public class ChatView extends LinearLayout {
         row.addView(send, sp);
         addView(row);
 
-        bubble("呜，本鲸在的！有什么想聊的？", false);
+        bubble("呜，本鲸在的！没配 Key 也能聊（免费接口会慢一点）。", false);
     }
 
     public void onOpen() {
@@ -99,11 +99,7 @@ public class ChatView extends LinearLayout {
     private void send() {
         String text = input.getText().toString().trim();
         if (text.isEmpty() || busy) return;
-        String key = host.getKey();
-        if (key.isEmpty()) {
-            bubble("还没配置 API Key，点菜单里的「设置」填一下。", false);
-            return;
-        }
+        String key = host.getKey();   // 空 key 会自动走免费接口
         input.setText("");
         bubble(text, true);
         try {
