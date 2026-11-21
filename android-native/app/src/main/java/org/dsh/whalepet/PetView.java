@@ -35,7 +35,7 @@ public class PetView extends View {
             longFired = true;
             squashV += 3.6f;
             host.buzz(30);
-            host.showMenu();
+            host.showSelector();
         }
     };
 
