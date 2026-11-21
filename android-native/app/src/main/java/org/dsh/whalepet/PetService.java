@@ -31,6 +31,7 @@ public class PetService extends Service {
     private WindowManager.LayoutParams lp;
     private PetView petView;
     private MenuView menuView;
+    private SelectorView selectorView;
     private ChatView chatView;
     private SpriteSheet[] sheets;
     private int screenW, screenH;
@@ -154,6 +155,32 @@ public class PetService extends Service {
         if (menuView == null) menuView = new MenuView(this, this);
         root.addView(menuView, new FrameLayout.LayoutParams(s, s));
         menuView.reset();
+    }
+
+    void showSelector() {
+        if (root == null) return;
+        int w = screenW;
+        int h = dp(200);
+        lp.width = w;
+        lp.height = h;
+        lp.x = 0;
+        lp.y = screenH - h - dp(36);
+        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
+        root.removeAllViews();
+        if (selectorView == null) selectorView = new SelectorView(this, this);
+        selectorView.reset();
+        root.addView(selectorView, new FrameLayout.LayoutParams(w, h));
+    }
+
+    void onSelectorPick(int i) {
+        switch (i) {
+            case 0: showChat(); break;
+            case 1: showSettings(); break;
+            case 2: cycleSkin(); break;
+            case 3: hidePet(); break;
+            default: closePanel(); break;
+        }
     }
 
     void showChat() {
