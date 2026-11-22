@@ -186,6 +186,10 @@ public class MenuView extends View {
                 downIdx = hit(x, y);
                 invalidate();
                 return downIdx >= 0;
+            case MotionEvent.ACTION_MOVE:
+                downIdx = hit(x, y);
+                invalidate();
+                return true;
             case MotionEvent.ACTION_UP: {
                 int idx = hit(x, y);
                 if (idx >= 0 && idx == downIdx) {

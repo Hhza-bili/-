@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -45,6 +46,7 @@ public class PetService extends Service {
     private int screenW, screenH;
 
     private static PetService instance;
+    private boolean menuActive = false;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -183,7 +185,16 @@ public class PetService extends Service {
         lp.x = screenW - w - dp(8);
         lp.y = screenH / 2;
 
-        root = new FrameLayout(this);
+        // 菜单展开时把整窗事件直接转发给菜单，绕过触摸目标丢失的问题
+        root = new FrameLayout(this) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent ev) {
+                if (menuActive && menuView != null && menuView.getParent() == this) {
+                    return menuView.dispatchTouchEvent(ev);
+                }
+                return super.dispatchTouchEvent(ev);
+            }
+        };
         petView = new PetView(this, sheets, this);
         root.addView(petView, new FrameLayout.LayoutParams(w, hgt));
         try {
@@ -231,6 +242,7 @@ public class PetService extends Service {
             menuView.setLayoutParams(new FrameLayout.LayoutParams(s, s));
             menuView.bringToFront();
         }
+        menuActive = true;
         menuView.play();
     }
 
@@ -299,6 +311,7 @@ public class PetService extends Service {
         lp.softInputMode = 0;
         try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
 
+        menuActive = false;
         for (View v : new View[]{menuView, chatView, clipView, settingsView}) {
             if (v != null && v.getParent() == root) root.removeView(v);
         }
