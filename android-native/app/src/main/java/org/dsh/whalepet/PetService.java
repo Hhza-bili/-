@@ -35,6 +35,7 @@ public class PetService extends Service {
     private MenuView menuView;
     private SelectorView selectorView;
     private ClipView clipView;
+    private SettingsView settingsView;
     private final java.util.ArrayList<String> clips = new java.util.ArrayList<>();
     private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
     private ChatView chatView;
@@ -59,7 +60,7 @@ public class PetService extends Service {
         handler.postDelayed(this::pollBalance, 2500);
         if (getKey().isEmpty()) {
             handler.postDelayed(() -> {
-                if (petView != null) petView.setBubble("菜单·设置 里填 API Key", 8000);
+                if (petView != null) petView.setBubbleBase("\u83dc\u5355\u00b7\u8bbe\u7f6e \u91cc\u586b Key");
             }, 1800);
         }
         handler.postDelayed(new Runnable() {
@@ -146,7 +147,7 @@ public class PetService extends Service {
     }
 
     private void addPet() {
-        int w = dp(D_W), hgt = dp(D_H);
+        int w = Math.round(dp(D_W) * petScale()), hgt = Math.round(dp(D_H) * petScale());
         lp = new WindowManager.LayoutParams(
                 w, hgt,
                 Build.VERSION.SDK_INT >= 26
@@ -267,7 +268,7 @@ public class PetService extends Service {
 
     void closePanel() {
         if (root == null) return;
-        int w = dp(D_W), hgt = dp(D_H);
+        int w = Math.round(dp(D_W) * petScale()), hgt = Math.round(dp(D_H) * petScale());
         lp.width = w;
         lp.height = hgt;
         lp.x = screenW - w - dp(8);
@@ -276,7 +277,7 @@ public class PetService extends Service {
         lp.softInputMode = 0;
         try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
 
-        for (View v : new View[]{menuView, chatView, clipView}) {
+        for (View v : new View[]{menuView, chatView, clipView, settingsView}) {
             if (v != null && v.getParent() == root) root.removeView(v);
         }
         if (petView == null) petView = new PetView(this, sheets, this);
@@ -290,25 +291,58 @@ public class PetService extends Service {
     }
 
     void showSettings() {
-        final android.widget.EditText et = new android.widget.EditText(this);
-        et.setText(getKey());
-        et.setHint("sk-...");
-        et.setSingleLine(true);
-        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
-                .setTitle("DeepSeek API Key")
-                .setView(et)
-                .setPositiveButton("保存", (d, w) -> {
-                    setKey(et.getText().toString().trim());
-                    closePanel();
-                })
-                .setNegativeButton("取消", null)
-                .create();
-        try {
-            dlg.getWindow().setType(Build.VERSION.SDK_INT >= 26
-                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    : WindowManager.LayoutParams.TYPE_PHONE);
-        } catch (Exception ignored) {}
-        dlg.show();
+        if (root == null) return;
+        int w = screenW;
+        int h = dp(D_CHAT_H);
+        lp.width = w;
+        lp.height = h;
+        lp.x = 0;
+        lp.y = screenH - h;
+        lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+        try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
+        for (View v : new View[]{menuView, chatView, clipView, petView}) {
+            if (v != null && v.getParent() == root) root.removeView(v);
+        }
+        if (settingsView == null) settingsView = new SettingsView(this, this);
+        root.removeView(settingsView);
+        root.addView(settingsView, new FrameLayout.LayoutParams(w, h));
+    }
+
+    // ------------------------------------------------------------------
+    float petScale() {
+        return getSharedPreferences("pet", MODE_PRIVATE).getFloat("scale", 1f);
+    }
+
+    void setPetScale(float s) {
+        s = Math.max(0.6f, Math.min(1.4f, s));
+        getSharedPreferences("pet", MODE_PRIVATE).edit().putFloat("scale", s).apply();
+        applyPetSize();
+    }
+
+    void applyPetSize() {
+        if (root == null) return;
+        if (menuView != null && menuView.getParent() == root) return;
+        if (chatView != null && chatView.getParent() == root) return;
+        if (settingsView != null && settingsView.getParent() == root) return;
+        if (clipView != null && clipView.getParent() == root) return;
+        int w = Math.round(dp(D_W) * petScale());
+        int hgt = Math.round(dp(D_H) * petScale());
+        lp.width = w;
+        lp.height = hgt;
+        lp.x = screenW - w - dp(8);
+        lp.y = screenH / 2;
+        try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
+        if (petView != null) petView.setLayoutParams(new FrameLayout.LayoutParams(w, hgt));
+    }
+
+    void updateKey() {
+        pollBalance();
+    }
+
+    void refreshToggles() {
+        if (!balanceOn() && petView != null) petView.setBubbleBase(null);
+        else pollBalance();
     }
 
     void buzz(int ms) {
@@ -325,7 +359,7 @@ public class PetService extends Service {
             try {
                 final String text = Balance.fetch(key);
                 handler.post(() -> {
-                    if (petView != null) petView.setBubble(text, 6000);
+                    if (petView != null) petView.setBubbleBase(text);
                 });
             } catch (Exception ignored) {
             }
@@ -351,13 +385,13 @@ public class PetService extends Service {
                 final String text = s;
                 handler.post(() -> {
                     if (text == null || text.isEmpty()) {
-                        if (petView != null) petView.setBubble("剪贴板有新内容（后台读不到）", 3000);
+                        if (petView != null) petView.setBubbleTemp("\u6709\u65b0\u526a\u5207\uff08\u70b9\u9762\u677f\u540c\u6b65\uff09", 4000);
                         return;
                     }
                     clips.add(0, text);
                     while (clips.size() > 30) clips.remove(clips.size() - 1);
                     String show = text.length() > 16 ? text.substring(0, 16) + "…" : text;
-                    if (petView != null) petView.setBubble("\ud83d\udccb " + show, 5200);
+                    if (petView != null) petView.setBubbleTemp("\ud83d\udccb " + show, 5200);
                 });
             });
         } catch (Exception ignored) {

@@ -27,8 +27,9 @@ public class PetView extends View {
     private final Paint bubbleTx = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bubbleTri = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF bubbleRect = new RectF();
-    private String bubbleText = null;
-    private long bubbleUntil = 0;
+    private String bubbleBase = null;
+    private String bubbleTemp = null;
+    private long tempUntil = 0;
 
     private int cur = 0, frame = 0;
     private long nextFrameAt = 0;
@@ -78,10 +79,16 @@ public class PetView extends View {
         invalidate();
     }
 
-    /** 头顶气泡：余额 / 剪贴板内容。 */
-    public void setBubble(String text, long holdMs) {
-        bubbleText = text;
-        bubbleUntil = SystemClock.uptimeMillis() + holdMs;
+    /** 常驻气泡：会一直显示，直到被新的常驻内容替换。 */
+    public void setBubbleBase(String text) {
+        bubbleBase = text;
+        invalidate();
+    }
+
+    /** 临时气泡：覆盖常驻内容一段时间（例如刚复制的东西）。 */
+    public void setBubbleTemp(String text, long holdMs) {
+        bubbleTemp = text;
+        tempUntil = SystemClock.uptimeMillis() + holdMs;
         invalidate();
     }
 
@@ -147,13 +154,16 @@ public class PetView extends View {
         if (host.fadeOn() && !dragging && now - lastTouchAt > IDLE_FADE_MS) want = 0.38f;
         if (Math.abs(getAlpha() - want) > 0.01f) setAlpha(want);
 
-        if (moving || (bubbleText != null && now < bubbleUntil)) postInvalidateOnAnimation();
+        if (moving || bubbleBase != null || (bubbleTemp != null && now < tempUntil)) postInvalidateOnAnimation();
         else postInvalidateDelayed((long) (s.interval * 1000f));
     }
 
     private void drawBubble(Canvas c, long now) {
-        if (bubbleText == null || now > bubbleUntil) return;
-        String txt = bubbleText.length() > 18 ? bubbleText.substring(0, 18) + "…" : bubbleText;
+        String full = null;
+        if (bubbleTemp != null && now < tempUntil) full = bubbleTemp;
+        else if (bubbleBase != null) full = bubbleBase;
+        if (full == null) return;
+        String txt = full.length() > 18 ? full.substring(0, 18) + "…" : full;
         bubbleTx.setTextSize(getHeight() * 0.055f);
         float tw = bubbleTx.measureText(txt);
         float padH = getWidth() * 0.06f;
