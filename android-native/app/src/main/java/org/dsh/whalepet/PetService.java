@@ -44,11 +44,32 @@ public class PetService extends Service {
     private int skin = 0;
     private int screenW, screenH;
 
+    private static PetService instance;
+
     @Override public IBinder onBind(Intent i) { return null; }
+
+    static void onClipCaptured(final String text) {
+        final PetService p = instance;
+        if (p == null || text == null) return;
+        p.handler.post(new Runnable() {
+            @Override public void run() { p.handleClip(text); }
+        });
+    }
+
+    private void handleClip(String text) {
+        if (!clipOn()) return;
+        if (clips.isEmpty() || !clips.get(0).equals(text)) {
+            clips.add(0, text);
+            while (clips.size() > 30) clips.remove(clips.size() - 1);
+        }
+        String show = text.length() > 16 ? text.substring(0, 16) + "\u2026" : text;
+        if (petView != null) petView.setBubbleTemp("\ud83d\udccb " + show, 5200);
+    }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics dm = getResources().getDisplayMetrics();
         screenW = dm.widthPixels;
@@ -83,6 +104,7 @@ public class PetService extends Service {
             try { wm.removeView(root); } catch (Exception ignored) {}
         }
         root = null;
+        instance = null;
         super.onDestroy();
     }
 

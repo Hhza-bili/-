@@ -95,6 +95,17 @@ public class MainActivity extends Activity {
         box.addView(save);
 
         gap();
+        Button acc = button("开启无障碍（尝试后台读剪贴板）", 0xFF23305C);
+        acc.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            } catch (Exception e) {
+                toast("请到系统设置里手动开启");
+            }
+        });
+        box.addView(acc);
+
+        gap();
         addSwitch("开机自启动", "autostart", true);
         addSwitch("头顶余额气泡", "balance", true);
         addSwitch("剪贴板记录", "clip", true);

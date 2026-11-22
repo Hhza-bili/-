@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
+import android.os.SystemClock;
 import android.view.animation.OvershootInterpolator;
 
 /** 围绕宠物的弧形气泡菜单（问一句 / 新对话 / 设置 / 换肤 / 隐藏）。 */
@@ -24,15 +25,35 @@ public class MenuView extends View {
     private final RectF rect = new RectF();
     private int downIdx = -1;
     private float anim = 0f;
+    private final float[] sc = new float[5];
+    private final float[] scv = new float[5];
+    private long lastFrame = 0;
     private ValueAnimator va;
 
     public MenuView(Context c, PetService host) {
         super(c);
         this.host = host;
+        for (int i = 0; i < 5; i++) sc[i] = 1f;
         icon.setStyle(Paint.Style.STROKE);
         icon.setStrokeCap(Paint.Cap.ROUND);
         label.setTextAlign(Paint.Align.CENTER);
         label.setFakeBoldText(true);
+    }
+
+    /** 弹簧式缩放：选中 1.30x，左右相邻 1.12x，其余微缩。 */
+    private void stepScales() {
+        long now = SystemClock.uptimeMillis();
+        float dt = lastFrame == 0 ? 0.016f : Math.min(0.05f, (now - lastFrame) / 1000f);
+        lastFrame = now;
+        for (int i = 0; i < 5; i++) {
+            float target = 1f;
+            if (downIdx >= 0) {
+                int d = Math.abs(i - downIdx);
+                target = d == 0 ? 1.30f : (d == 1 ? 1.12f : 0.93f);
+            }
+            scv[i] += (target - sc[i]) * 72f * dt - scv[i] * 11f * dt;
+            sc[i] += scv[i] * dt;
+        }
     }
 
     public void play() {
@@ -67,11 +88,12 @@ public class MenuView extends View {
 
     @Override
     protected void onDraw(Canvas c) {
+        stepScales();
         float k = anim;
         float fade = Math.min(1f, k * 1.8f);
         for (int i = 0; i < 5; i++) {
             float x = curX(i), y = curY(i);
-            float r = btnR * (0.72f + 0.28f * Math.min(1f, k));
+            float r = btnR * sc[i] * (0.72f + 0.28f * Math.min(1f, k));
             boolean on = i == downIdx;
 
             bg.setColor(on ? 0xFF4D6BFE : 0xE62B3245);
@@ -91,7 +113,7 @@ public class MenuView extends View {
         }
         icon.setAlpha(255);
         label.setAlpha(255);
-        if (anim < 1.12f) postInvalidateOnAnimation();
+        postInvalidateOnAnimation();
     }
 
     private void drawIcon(Canvas c, int i, float x, float y, float r) {
