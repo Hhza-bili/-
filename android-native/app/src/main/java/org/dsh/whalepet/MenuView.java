@@ -7,6 +7,8 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.animation.OvershootInterpolator;
 
@@ -28,6 +30,15 @@ public class MenuView extends View {
     private final float[] sc = new float[5];
     private final float[] scv = new float[5];
     private long lastFrame = 0;
+    private final Handler h = new Handler(Looper.getMainLooper());
+    private final Runnable autoClose = new Runnable() {
+        @Override public void run() { host.closePanel(); }
+    };
+
+    private void armAutoClose() {
+        h.removeCallbacks(autoClose);
+        h.postDelayed(autoClose, 5000);
+    }
     private ValueAnimator va;
 
     public MenuView(Context c, PetService host) {
@@ -57,6 +68,7 @@ public class MenuView extends View {
     }
 
     public void play() {
+        armAutoClose();
         if (va != null) va.cancel();
         anim = 0f;
         va = ValueAnimator.ofFloat(0f, 1f);
@@ -150,6 +162,7 @@ public class MenuView extends View {
 
     /** 手指滑过时高亮跟手。 */
     public void hover(float x, float y) {
+        armAutoClose();
         int idx = hit(x, y);
         if (idx != downIdx) {
             downIdx = idx;
@@ -159,10 +172,13 @@ public class MenuView extends View {
 
     /** 松手时执行当前高亮项。 */
     public void pick(float x, float y) {
+        h.removeCallbacks(autoClose);
         int idx = hit(x, y);
         if (idx >= 0) {
             host.buzz(14);
             fire(idx);
+        } else {
+            host.closePanel();   // 没选中任何项 -> 收起
         }
         downIdx = -1;
         invalidate();
@@ -201,6 +217,7 @@ public class MenuView extends View {
                 return true;
             }
             case MotionEvent.ACTION_CANCEL:
+                h.removeCallbacks(autoClose);
                 downIdx = -1;
                 invalidate();
                 return true;

@@ -80,6 +80,12 @@ public class PetService extends Service {
         loadSheets();
         addPet();
         setupClipboard();
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                pollClip();
+                handler.postDelayed(this, 1500);
+            }
+        }, 1200);
         handler.postDelayed(this::pollBalance, 2500);
         if (getKey().isEmpty()) {
             handler.postDelayed(() -> {
@@ -177,9 +183,12 @@ public class PetService extends Service {
                 Build.VERSION.SDK_INT >= 26
                         ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                         : WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                clipFocusOn()
+                        ? (WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                           | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                        : (WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                           | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                           | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS),
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.START;
         lp.x = screenW - w - dp(8);
@@ -307,7 +316,8 @@ public class PetService extends Service {
         lp.height = hgt;
         lp.x = screenW - w - dp(8);
         lp.y = screenH / 2;
-        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        if (!clipFocusOn()) lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        else lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = 0;
         try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
 
@@ -431,6 +441,37 @@ public class PetService extends Service {
             });
         } catch (Exception ignored) {
         }
+    }
+
+    boolean clipFocusOn() {
+        return getSharedPreferences("pet", MODE_PRIVATE).getBoolean("clipfocus", true);
+    }
+
+    private String readClip() {
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm == null || !cm.hasPrimaryClip()) return null;
+            android.content.ClipData d = cm.getPrimaryClip();
+            if (d == null || d.getItemCount() == 0) return null;
+            CharSequence cs = d.getItemAt(0).coerceToText(this);
+            if (cs == null) return null;
+            String s = cs.toString().trim();
+            return s.isEmpty() ? null : s;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String lastClip = null;
+
+    private void pollClip() {
+        if (!clipOn()) return;
+        String s = readClip();
+        if (s == null) return;
+        if (s.equals(lastClip)) return;
+        lastClip = s;
+        handleClip(s);
     }
 
     boolean balanceOn() {
