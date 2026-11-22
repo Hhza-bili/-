@@ -96,6 +96,8 @@ public class MainActivity extends Activity {
 
         gap();
         addSwitch("开机自启动", "autostart", true);
+        addSwitch("头顶余额气泡", "balance", true);
+        addSwitch("剪贴板记录", "clip", true);
         addSwitch("拖拽动态模糊", "blur", true);
         addSwitch("闲置自动半透明", "fade", true);
 

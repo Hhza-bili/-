@@ -11,7 +11,7 @@ import android.view.animation.OvershootInterpolator;
 
 /** 围绕宠物的弧形气泡菜单（问一句 / 新对话 / 设置 / 换肤 / 隐藏）。 */
 public class MenuView extends View {
-    private static final String[] LABELS = {"问一句", "新对话", "设置", "换肤", "隐藏"};
+    private static final String[] LABELS = {"问一句", "剪贴板", "设置", "换肤", "隐藏"};
     private static final int[] ANGLES = {108, 144, 180, 216, 252};
 
     private final PetService host;
@@ -126,6 +126,26 @@ public class MenuView extends View {
         }
     }
 
+    /** 手指滑过时高亮跟手。 */
+    public void hover(float x, float y) {
+        int idx = hit(x, y);
+        if (idx != downIdx) {
+            downIdx = idx;
+            invalidate();
+        }
+    }
+
+    /** 松手时执行当前高亮项。 */
+    public void pick(float x, float y) {
+        int idx = hit(x, y);
+        if (idx >= 0) {
+            host.buzz(14);
+            fire(idx);
+        }
+        downIdx = -1;
+        invalidate();
+    }
+
     private int hit(float x, float y) {
         for (int i = 0; i < 5; i++) {
             float dx = x - curX(i), dy = y - curY(i);
@@ -165,7 +185,7 @@ public class MenuView extends View {
     private void fire(int i) {
         switch (i) {
             case 0: host.showChat(); break;
-            case 1: host.newChat(); break;
+            case 1: host.showClips(); break;
             case 2: host.showSettings(); break;
             case 3: host.cycleSkin(); break;
             default: host.hidePet(); break;

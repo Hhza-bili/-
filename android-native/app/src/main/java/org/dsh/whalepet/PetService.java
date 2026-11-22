@@ -22,7 +22,8 @@ import java.io.InputStream;
 
 /** 持有悬浮窗，负责在宠物 / 菜单 / 对话三种形态间切换。 */
 public class PetService extends Service {
-    static final int D_SMALL = 190;
+    static final int D_W = 190;
+    static final int D_H = 244;
     static final int D_MENU = 300;
     static final int D_CHAT_H = 430;
 
@@ -32,6 +33,9 @@ public class PetService extends Service {
     private PetView petView;
     private MenuView menuView;
     private SelectorView selectorView;
+    private ClipView clipView;
+    private final java.util.ArrayList<String> clips = new java.util.ArrayList<>();
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
     private ChatView chatView;
     private SpriteSheet[] sheets;
     private SpriteSheet[][] skins;
@@ -50,6 +54,14 @@ public class PetService extends Service {
         startForeground(1, buildNotify());
         loadSheets();
         addPet();
+        setupClipboard();
+        handler.postDelayed(this::pollBalance, 2500);
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                pollBalance();
+                handler.postDelayed(this, 60000);
+            }
+        }, 60000);
     }
 
     @Override
@@ -128,9 +140,9 @@ public class PetService extends Service {
     }
 
     private void addPet() {
-        int size = dp(D_SMALL);
+        int w = dp(D_W), hgt = dp(D_H);
         lp = new WindowManager.LayoutParams(
-                size, size,
+                w, hgt,
                 Build.VERSION.SDK_INT >= 26
                         ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                         : WindowManager.LayoutParams.TYPE_PHONE,
@@ -139,12 +151,12 @@ public class PetService extends Service {
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.START;
-        lp.x = screenW - size - dp(8);
+        lp.x = screenW - w - dp(8);
         lp.y = screenH / 2;
 
         root = new FrameLayout(this);
         petView = new PetView(this, sheets, this);
-        root.addView(petView, new FrameLayout.LayoutParams(size, size));
+        root.addView(petView, new FrameLayout.LayoutParams(w, hgt));
         try {
             wm.addView(root, lp);
         } catch (Exception ignored) {}
@@ -163,16 +175,29 @@ public class PetService extends Service {
     void showMenu() {
         if (root == null) return;
         int s = dp(D_MENU);
+        float petOldX = lp.x + lp.width / 2f;
+        float petOldY = lp.y + lp.height * 0.62f;
         lp.width = s;
         lp.height = s;
-        lp.x = Math.max(dp(4), Math.min(lp.x - (s - dp(D_SMALL)) / 2, screenW - s - dp(4)));
-        lp.y = Math.max(dp(4), Math.min(screenH / 2 - s / 2, screenH - s - dp(4)));
+        lp.x = Math.round(petOldX - s * 0.70f);
+        lp.y = Math.round(petOldY - s * 0.52f);
+        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
 
         root.removeAllViews();
         if (menuView == null) menuView = new MenuView(this, this);
         root.addView(menuView, new FrameLayout.LayoutParams(s, s));
         menuView.play();
+    }
+
+    void menuHover(float rx, float ry) {
+        if (menuView == null) return;
+        menuView.hover(rx - lp.x, ry - lp.y);
+    }
+
+    void menuPick(float rx, float ry) {
+        if (menuView == null) return;
+        menuView.pick(rx - lp.x, ry - lp.y);
     }
 
     void showSelector() {
@@ -221,10 +246,10 @@ public class PetService extends Service {
 
     void closePanel() {
         if (root == null) return;
-        int size = dp(D_SMALL);
-        lp.width = size;
-        lp.height = size;
-        lp.x = screenW - size - dp(8);
+        int w = dp(D_W), hgt = dp(D_H);
+        lp.width = w;
+        lp.height = hgt;
+        lp.x = screenW - w - dp(8);
         lp.y = screenH / 2;
         lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         lp.softInputMode = 0;
@@ -232,7 +257,7 @@ public class PetService extends Service {
 
         root.removeAllViews();
         if (petView == null) petView = new PetView(this, sheets, this);
-        root.addView(petView, new FrameLayout.LayoutParams(size, size));
+        root.addView(petView, new FrameLayout.LayoutParams(w, hgt));
     }
 
     void showSettings() {
@@ -262,6 +287,77 @@ public class PetService extends Service {
             android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
             if (v != null) v.vibrate(ms);
         } catch (Exception ignored) {}
+    }
+
+    void pollBalance() {
+        final String key = getKey();
+        if (key.isEmpty() || !balanceOn()) return;
+        new Thread(() -> {
+            try {
+                final String text = Balance.fetch(key);
+                handler.post(() -> {
+                    if (petView != null) petView.setBubble(text, 6000);
+                });
+            } catch (Exception ignored) {
+            }
+        }).start();
+    }
+
+    private void setupClipboard() {
+        try {
+            final android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm == null) return;
+            cm.addPrimaryClipChangedListener(() -> {
+                if (!clipOn()) return;
+                String s = null;
+                try {
+                    android.content.ClipData d = cm.getPrimaryClip();
+                    if (d != null && d.getItemCount() > 0) {
+                        CharSequence cs = d.getItemAt(0).coerceToText(this);
+                        if (cs != null) s = cs.toString().trim();
+                    }
+                } catch (Exception ignored) {
+                }
+                final String text = s;
+                handler.post(() -> {
+                    if (text == null || text.isEmpty()) {
+                        if (petView != null) petView.setBubble("剪贴板有新内容（后台读不到）", 3000);
+                        return;
+                    }
+                    clips.add(0, text);
+                    while (clips.size() > 30) clips.remove(clips.size() - 1);
+                    String show = text.length() > 16 ? text.substring(0, 16) + "…" : text;
+                    if (petView != null) petView.setBubble("\ud83d\udccb " + show, 5200);
+                });
+            });
+        } catch (Exception ignored) {
+        }
+    }
+
+    boolean balanceOn() {
+        return getSharedPreferences("pet", MODE_PRIVATE).getBoolean("balance", true);
+    }
+
+    boolean clipOn() {
+        return getSharedPreferences("pet", MODE_PRIVATE).getBoolean("clip", true);
+    }
+
+    void showClips() {
+        if (root == null) return;
+        int w = screenW;
+        int h = dp(D_CHAT_H);
+        lp.width = w;
+        lp.height = h;
+        lp.x = 0;
+        lp.y = screenH - h;
+        lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+        try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
+        root.removeAllViews();
+        if (clipView == null) clipView = new ClipView(this, clips, this);
+        root.addView(clipView, new FrameLayout.LayoutParams(w, h));
+        clipView.refresh();
     }
 
     boolean blurOn() {
