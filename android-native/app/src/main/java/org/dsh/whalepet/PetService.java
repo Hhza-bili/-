@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
@@ -56,6 +57,11 @@ public class PetService extends Service {
         addPet();
         setupClipboard();
         handler.postDelayed(this::pollBalance, 2500);
+        if (getKey().isEmpty()) {
+            handler.postDelayed(() -> {
+                if (petView != null) petView.setBubble("菜单·设置 里填 API Key", 8000);
+            }, 1800);
+        }
         handler.postDelayed(new Runnable() {
             @Override public void run() {
                 pollBalance();
@@ -184,9 +190,24 @@ public class PetService extends Service {
         lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
 
-        root.removeAllViews();
+        // 宠物 View 必须留在窗口里，否则长按后的滑动事件会全部丢失
+        if (petView == null) {
+            petView = new PetView(this, sheets, this);
+            root.addView(petView, new FrameLayout.LayoutParams(s, s));
+        } else {
+            if (petView.getParent() != root) root.addView(petView);
+            petView.setLayoutParams(new FrameLayout.LayoutParams(s, s));
+        }
+        petView.setMenuLayout(true);
+        petView.bringToFront();
+
         if (menuView == null) menuView = new MenuView(this, this);
-        root.addView(menuView, new FrameLayout.LayoutParams(s, s));
+        if (menuView.getParent() != root) {
+            root.addView(menuView, new FrameLayout.LayoutParams(s, s));
+        } else {
+            menuView.setLayoutParams(new FrameLayout.LayoutParams(s, s));
+            menuView.bringToFront();
+        }
         menuView.play();
     }
 
@@ -255,9 +276,17 @@ public class PetService extends Service {
         lp.softInputMode = 0;
         try { wm.updateViewLayout(root, lp); } catch (Exception ignored) {}
 
-        root.removeAllViews();
+        for (View v : new View[]{menuView, chatView, clipView}) {
+            if (v != null && v.getParent() == root) root.removeView(v);
+        }
         if (petView == null) petView = new PetView(this, sheets, this);
-        root.addView(petView, new FrameLayout.LayoutParams(w, hgt));
+        if (petView.getParent() != root) {
+            root.addView(petView, new FrameLayout.LayoutParams(w, hgt));
+        } else {
+            petView.setLayoutParams(new FrameLayout.LayoutParams(w, hgt));
+        }
+        petView.setMenuLayout(false);
+        petView.bringToFront();
     }
 
     void showSettings() {
@@ -343,8 +372,29 @@ public class PetService extends Service {
         return getSharedPreferences("pet", MODE_PRIVATE).getBoolean("clip", true);
     }
 
+    /** 面板打开时顺手读一次当前剪贴板（前台才能读）。 */
+    private void grabClip() {
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm == null || !cm.hasPrimaryClip()) return;
+            android.content.ClipData d = cm.getPrimaryClip();
+            if (d == null || d.getItemCount() == 0) return;
+            CharSequence cs = d.getItemAt(0).coerceToText(this);
+            if (cs == null) return;
+            String s = cs.toString().trim();
+            if (s.isEmpty()) return;
+            if (clips.isEmpty() || !clips.get(0).equals(s)) {
+                clips.add(0, s);
+                while (clips.size() > 30) clips.remove(clips.size() - 1);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     void showClips() {
         if (root == null) return;
+        grabClip();
         int w = screenW;
         int h = dp(D_CHAT_H);
         lp.width = w;

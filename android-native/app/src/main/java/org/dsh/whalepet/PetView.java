@@ -36,6 +36,7 @@ public class PetView extends View {
     private float downX, downY, lastX, lastY;
     private long downAt = 0, lastTouchAt = 0, lastTap = 0;
     private boolean dragging = false, longFired = false, menuMode = false;
+    private boolean menuLayout = false;
 
     private final Runnable longPress = new Runnable() {
         @Override public void run() {
@@ -68,6 +69,12 @@ public class PetView extends View {
         cur = 0;
         frame = 0;
         squashV += 2.2f;
+        invalidate();
+    }
+
+    /** 菜单展开时宠物换到弧形菜单的中心位置。 */
+    public void setMenuLayout(boolean on) {
+        menuLayout = on;
         invalidate();
     }
 
@@ -106,11 +113,24 @@ public class PetView extends View {
         }
 
         int w = getWidth(), hgt = getHeight();
-        int areaH = (int) (hgt * 0.76f);
-        int top = hgt - areaH;
-        float scale = Math.min(w / (float) s.fw, areaH / (float) s.fh);
-        int bw = Math.round(s.fw * scale), bh = Math.round(s.fh * scale);
-        int l = (w - bw) / 2, t = top + (areaH - bh) / 2;
+        int l, t, bw, bh;
+        if (menuLayout) {
+            float size = Math.min(w, hgt) * 0.40f;
+            float cx = w * 0.70f, cy = hgt * 0.52f;
+            float scale = size / Math.max(s.fw, s.fh);
+            bw = Math.round(s.fw * scale);
+            bh = Math.round(s.fh * scale);
+            l = Math.round(cx - bw / 2f);
+            t = Math.round(cy - bh / 2f);
+        } else {
+            int areaH = (int) (hgt * 0.76f);
+            int top = hgt - areaH;
+            float scale = Math.min(w / (float) s.fw, areaH / (float) s.fh);
+            bw = Math.round(s.fw * scale);
+            bh = Math.round(s.fh * scale);
+            l = (w - bw) / 2;
+            t = top + (areaH - bh) / 2;
+        }
         s.dst.set(l, t, l + bw, t + bh);
 
         canvas.save();
@@ -121,7 +141,7 @@ public class PetView extends View {
         canvas.drawBitmap(s.sheet, s.rect(frame), s.dst, paint);
         canvas.restore();
 
-        drawBubble(canvas, now);
+        if (!menuLayout) drawBubble(canvas, now);
 
         float want = 1f;
         if (host.fadeOn() && !dragging && now - lastTouchAt > IDLE_FADE_MS) want = 0.38f;
