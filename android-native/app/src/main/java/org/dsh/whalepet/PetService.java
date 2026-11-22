@@ -34,6 +34,8 @@ public class PetService extends Service {
     private SelectorView selectorView;
     private ChatView chatView;
     private SpriteSheet[] sheets;
+    private SpriteSheet[][] skins;
+    private int skin = 0;
     private int screenW, screenH;
 
     @Override public IBinder onBind(Intent i) { return null; }
@@ -90,12 +92,28 @@ public class PetService extends Service {
         try {
             JSONObject meta = new JSONObject(readAsset("anim_meta.json"));
             String[] names = {"idle", "happy", "drag", "squash"};
-            sheets = new SpriteSheet[names.length];
+            SpriteSheet[] pixel = new SpriteSheet[names.length];
             for (int i = 0; i < names.length; i++) {
-                sheets[i] = SpriteSheet.load(getAssets(), meta.getJSONObject(names[i]));
+                pixel[i] = SpriteSheet.load(getAssets(), meta.getJSONObject(names[i]));
             }
+            JSONObject w = new JSONObject();
+            w.put("file", "whale_sheet.png");
+            w.put("cols", 2);
+            w.put("rows", 1);
+            w.put("count", 2);
+            w.put("frame_w", 220);
+            w.put("frame_h", 124);
+            w.put("cell_w", 224);
+            w.put("cell_h", 128);
+            w.put("pad", 2);
+            w.put("interval", 0.9);
+            SpriteSheet whale = SpriteSheet.load(getAssets(), w);
+            skins = new SpriteSheet[][]{pixel, new SpriteSheet[]{whale, whale, whale, whale}};
+            skin = 0;
+            sheets = skins[0];
         } catch (Exception e) {
             sheets = null;
+            skins = null;
         }
     }
 
@@ -154,7 +172,7 @@ public class PetService extends Service {
         root.removeAllViews();
         if (menuView == null) menuView = new MenuView(this, this);
         root.addView(menuView, new FrameLayout.LayoutParams(s, s));
-        menuView.reset();
+        menuView.play();
     }
 
     void showSelector() {
@@ -255,8 +273,17 @@ public class PetService extends Service {
     }
 
     void cycleSkin() {
+        if (skins == null) return;
+        skin = (skin + 1) % skins.length;
+        sheets = skins[skin];
         closePanel();
-        if (petView != null) petView.cycle();
+        if (petView != null) petView.setSheets(sheets);
+        buzz(20);
+    }
+
+    void newChat() {
+        if (chatView != null) chatView.reset();
+        showChat();
     }
 
     void hidePet() {

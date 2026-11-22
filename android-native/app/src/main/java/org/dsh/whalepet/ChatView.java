@@ -23,7 +23,7 @@ public class ChatView extends LinearLayout {
     private final LinearLayout msgs;
     private final ScrollView scroll;
     private final EditText input;
-    private final JSONArray history = new JSONArray();
+    private JSONArray history = new JSONArray();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private boolean busy = false;
 
@@ -83,6 +83,13 @@ public class ChatView extends LinearLayout {
         addView(row);
 
         bubble("呜，本鲸在的！没配 Key 也能聊（免费接口会慢一点）。", false);
+    }
+
+    public void reset() {
+        msgs.removeAllViews();
+        history = new JSONArray();
+        busy = false;
+        bubble("本鲸重新开始啦～想聊点什么？", false);
     }
 
     public void onOpen() {

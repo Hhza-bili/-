@@ -16,7 +16,7 @@ public class PetView extends View {
     private static final long IDLE_FADE_MS = 8000;
 
     private final PetService host;
-    private final SpriteSheet[] sheets;
+    private SpriteSheet[] sheets;
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final BlurMaskFilter blur = new BlurMaskFilter(9f, BlurMaskFilter.Blur.NORMAL);
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -35,7 +35,7 @@ public class PetView extends View {
             longFired = true;
             squashV += 3.6f;
             host.buzz(30);
-            host.showSelector();
+            host.showMenu();
         }
     };
 
@@ -91,6 +91,16 @@ public class PetView extends View {
 
         if (moving) postInvalidateOnAnimation();
         else postInvalidateDelayed((long) (s.interval * 1000f));
+    }
+
+    public void setSheets(SpriteSheet[] s) {
+        if (s != null) {
+            sheets = s;
+            cur = 0;
+            frame = 0;
+            squashV += 2.2f;
+            invalidate();
+        }
     }
 
     /** 换一套动画（idle / happy / drag / squash）。 */
